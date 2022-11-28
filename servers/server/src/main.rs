@@ -37,27 +37,39 @@ fn main() {
     
     let mut buf = [0; 30];
 
+    let mut agent_ip = Vec::new();
+
+    //create a vector to hold the threads created 
+    let mut threads = Vec::new();
+
     //create a unique ID for the server
     //not necessaarly needed to be random
     let server_id = rand::thread_rng().gen_range(1..101);
     //println!("server id: {}", server_id);
+    let mut priority_number = generate_priority_number();
+
+
 
     
      //send data using a thread and the cloned socket
-        thread::spawn(move || {
+     //push to threads vector
+
+       threads.push(thread::spawn(move || {
             loop {
                 //if check_time() returns true then send the new priority number to the other servers
                 if check_time() {
-                    let priority_number = generate_priority_number();
+                    priority_number = generate_priority_number();
                     let priority_number = priority_number.to_string();
                     let priority_number = priority_number.as_bytes();
                     socket2.send_to(priority_number, "xx.xx.xx.xx:8080").expect("couldn't send data");
                     socket2.send_to(priority_number, "xx.xx.xx.xx:8080").expect("couldn't send data");
+
+                }
             }
-        });
+        }));
     
     //create a thread  socket to keep listening (recieving )for data
-    thread::spawn(move || {
+    threads.push(thread::spawn(move || {
         loop {
             let (amt, src) = socket.recv_from(&mut buf).expect("Didn't recieve data");
             //another recieve from socket
@@ -75,38 +87,39 @@ fn main() {
             //and if priority number is greater than both data and data2,sleep the main thread for 5 seconds else do nothing
             if priority_number > data_int && priority_number > data2_int {
                 thread::sleep(Duration::from_secs(5));
+                //missing part: to multicast to the agent that this server 
             }
 
         }
-    });
+    }));
  
     
 
 
-     //loop to recieve the priority number from the other servers within a sepreate thread and compares the priority numbers 
-    //to determine which server has the highest priority number
-     //recieve from the agent
-     //recieve from the other servers
-     //compare the priority numbers
-     thread::spawn(move || {
+     //recieve from agent its ip address and stores it in a vector
+     threads.push(thread::spawn(move || {
         loop {
-            let (amt, src) = socket4.recv_from(&mut buf).expect("Didn't recieve data");
-            println!("{} bytes recieved from {}", amt, src);
-            println!("data recieved: {}", str::from_utf8(&buf).unwrap());
-            //store the data recieved from the other servers in a variable
-           // let priority_numberB = str::from_utf8(&buf).unwrap();
+            //recieve from agent its ip address and stores it in a vector
+            
+            let (amt, src) = socket3.recv_from(&mut buf).expect("Didn't recieve data");
+            agent_ip.push(src);
+
         }
-    });
-    //send the priority number to the other servers
+    }));
 
-    
-    //keep main thread alive
-    loop {
-        thread::sleep(Duration::from_secs(1));
+    //thread that responds to the agent with an acknowledgement message 
+    threads.push(thread::spawn(move || {
+        loop {
+            //send acknowledgement message to the agent
+            let ack = "acknowledgement";
+            let ack = ack.as_bytes();
+            socket4.send_to(ack, agent_ip[0]).expect("couldn't send data");
+        }
+    }));
+
+    //join all the threads
+    for thread in threads {
+        thread.join().unwrap();
     }
-
-    //missing
-    //nawa'3 l server 
-
 }
 
