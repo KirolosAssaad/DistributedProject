@@ -94,8 +94,6 @@ fn main() {
     }));
  
     
-
-
      //recieve from agent its ip address and stores it in a vector
      threads.push(thread::spawn(move || {
         loop {
@@ -107,13 +105,14 @@ fn main() {
         }
     }));
 
-    //thread that responds to the agent with an acknowledgement message 
+    //thread that recieves from an agent and send back to the same ip address it recieved from 
     threads.push(thread::spawn(move || {
         loop {
-            //send acknowledgement message to the agent
-            let ack = "acknowledgement";
-            let ack = ack.as_bytes();
-            socket4.send_to(ack, agent_ip[0]).expect("couldn't send data");
+            //recieve from agent a message and send it back to the same ip address it recieved from
+            let (amt, src) = socket4.recv_from(&mut buf).expect("Didn't recieve data");
+            //send back a message to the agent " message recived"
+            socket4.send_to("message recieved".as_bytes(), src).expect("couldn't send data");
+            
         }
     }));
 
