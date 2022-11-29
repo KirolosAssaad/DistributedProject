@@ -1,10 +1,11 @@
 //create server that communicates with another server using udp 
 
+//use std::borrow::Borrow;
 use std::net::UdpSocket;
 use std::str;
 use std::thread;
 use std::time::Duration;
-use std::string::String;
+//use std::string::String;
 use rand::Rng;
 
 
@@ -33,8 +34,11 @@ fn main() {
     let socket2 = socket.try_clone().expect("couldn't clone socket");
 
     let socket3 = UdpSocket::bind("10.40.41.134:8080").expect("couldn't bind to address");
-    let socket4 = socket.try_clone().expect("couldn't clone socket");
+    let socket4 = socket3.try_clone().expect("couldn't clone socket");
     
+    let socket5 = UdpSocket::bind("10.40.41.134:8080").expect("couldn't bind to address");
+    let socket6 = socket5.try_clone().expect("couldn't clone socket");
+
     let mut buf = [0; 30];
 
     let mut agent_ip = Vec::new();
@@ -48,8 +52,21 @@ fn main() {
     //println!("server id: {}", server_id);
     let mut priority_number = generate_priority_number();
 
+    
+    //let agent_ips = agent_ip;
+    //clone agent_ip vector to be used in the threads
+    let agent_ips = agent_ip.clone();
 
+     //recieve from agent its ip address and stores it in a vector
+     threads.push(thread::spawn(move || {
+        loop {
+            //recieve from agent its ip address and stores it in a vector
+            
+            let (amt, src) = socket3.recv_from(&mut buf).expect("Didn't recieve data");
+            agent_ip.push(src);
 
+        }
+    }));
     
      //send data using a thread and the cloned socket
      //push to threads vector
@@ -77,9 +94,9 @@ fn main() {
             //println!("{} bytes recieved from {}", amt, src);
             //println!("data recieved: {}", str::from_utf8(&buf).unwrap());
             //store the first recieved data in a string
-            let mut data = str::from_utf8(&buf).unwrap();
+            let data = str::from_utf8(&buf).unwrap();
             //store the second recieved data in a string
-            let mut data2 = str::from_utf8(&buf).unwrap();
+            let data2 = str::from_utf8(&buf).unwrap();
             //change them to integers
             let data_int = data.parse::<i32>().unwrap();
             let data2_int = data2.parse::<i32>().unwrap();
@@ -88,22 +105,17 @@ fn main() {
             if priority_number > data_int && priority_number > data2_int {
                 thread::sleep(Duration::from_secs(5));
                 //missing part: to multicast to the agent that this server 
+                //send to the ip addresses in the vector agent_ip that this server "server_id" is down
+                for i in 0..agent_ips.len() {
+                    socket6.send_to("server is down".as_bytes(), agent_ips[i]).expect("couldn't send data");
+                }
+
+
             }
 
         }
     }));
  
-    
-     //recieve from agent its ip address and stores it in a vector
-     threads.push(thread::spawn(move || {
-        loop {
-            //recieve from agent its ip address and stores it in a vector
-            
-            let (amt, src) = socket3.recv_from(&mut buf).expect("Didn't recieve data");
-            agent_ip.push(src);
-
-        }
-    }));
 
     //thread that recieves from an agent and send back to the same ip address it recieved from 
     threads.push(thread::spawn(move || {
@@ -111,7 +123,7 @@ fn main() {
             //recieve from agent a message and send it back to the same ip address it recieved from
             let (amt, src) = socket4.recv_from(&mut buf).expect("Didn't recieve data");
             //send back a message to the agent " message recived"
-            socket4.send_to("message recieved".as_bytes(), src).expect("couldn't send data");
+            socket5.send_to("message recieved".as_bytes(), src).expect("couldn't send data");
             
         }
     }));
