@@ -11,22 +11,36 @@ fn main() {
     }));
 
     let mut counter = 4000;
-    let address = "localhost:";
+    let address = "10.7.57.77:";
     for _ in 0..5 {
         new_handles.push(thread::spawn(move || {
             let new_address = address.to_string() + &counter.to_string();
             // println!("{}", new_address);
             loop {
+                // println!("SENDING REQUEST FROM: {:?}", new_address);
                 let socket =
                     UdpSocket::bind(new_address.clone()).expect("couldn't bind to address");
                 let data = "hello world";
                 socket
-                    .send_to(data.as_bytes(), "localhost:8080")
+                    .send_to(data.as_bytes(), "10.7.57.77:8080")
                     .expect("couldn't send data");
 
                 // receive data
                 let mut buf = [0; 1024];
-                let (_amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive data");
+
+                socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+                // // let (_amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive data");
+                match socket.recv_from(&mut buf) {
+                    Ok((_amt, _src)) => {
+                        // let message = std::str::from_utf8(&buf[..amt]).unwrap();
+                        // println!("received message from {:?}: {:?}", src, message);
+                    }
+                    Err(_e) => {
+                        // println!("error receiving data: {:?}", e);
+                        continue;
+                    }
+                }
+                // println!("CLIENT RECIEVED RESOPNSE");
             }
         }));
         counter += 1;
@@ -38,16 +52,20 @@ fn main() {
 }
 
 fn agent() {
-    let thread1_addr = "localhost:8001";
-    let thread2_addr = "localhost:8002";
-    let thread3_addr = "localhost:8003";
+    let thread1_addr = "10.7.57.77:8001";
+    let thread2_addr = "10.7.57.77:8002";
+    let thread3_addr = "10.7.57.77:8003";
 
-    let agent_address = "localhost:8080";
-    let agent_address2 = "localhost:8081";
+    let agent_address = "10.7.57.77:8080";
+    let agent_address2 = "10.7.57.77:8081";
 
-    let server1_addr = "localhost:9001";
-    let server2_addr = "localhost:9002";
-    let server3_addr = "localhost:9003";
+    let server1_addr = "10.7.57.176:8082";
+    let server2_addr = "10.7.57.73:8082";
+    let server3_addr = "10.7.57.80:8082";
+
+    let server1_addr2 = "10.7.57.176:8081";
+    let server2_addr2 = "10.7.57.73:8081";
+    let server3_addr2 = "10.7.57.80:8081";
 
     let mut handles = vec![];
 
@@ -60,6 +78,11 @@ fn agent() {
     let (sender4, receiver4): (_, Receiver<String>) = channel();
 
     handles.push(thread::spawn(move || {
+        
+        let socket = UdpSocket::bind(thread1_addr).unwrap();
+
+        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+
         loop {
             let client = receiver1.recv();
             let message = receiver1.recv();
@@ -67,26 +90,40 @@ fn agent() {
             let client = client.unwrap();
             let mes = message.unwrap();
 
-            let socket = UdpSocket::bind(thread1_addr).unwrap();
 
             socket.send_to(mes.as_bytes(), server1_addr).unwrap();
 
             // listen for response
             let mut buf = [0; 1024];
-            let (amt, src) = socket.recv_from(&mut buf).unwrap();
-            let response = std::str::from_utf8(&buf[..amt]).unwrap();
+            // let (amt, _src) = socket.recv_from(&mut buf).unwrap();
 
-            println!(
-                "client {:?} received response from server {:?}",
-                client, src
-            );
+            match socket.recv_from(&mut buf){
+                Ok((amt, _src))=>{
+                    let response = std::str::from_utf8(&buf[..amt]).unwrap();
+
+                    socket.send_to(response.as_bytes(), client).unwrap();
+                }
+                Err(_e) => {
+
+                }
+            }
+
+            // println!(
+            //     "client {:?} received response from server {:?}",
+            //     client, src
+            // );
 
             // send response back to client
-            socket.send_to(response.as_bytes(), client).unwrap();
+
+            // println!("THREAD1");
         }
     }));
-
+    
     handles.push(thread::spawn(move || {
+        let socket = UdpSocket::bind(thread2_addr).unwrap();
+
+        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+
         loop {
             let client = receiver2.recv();
             let message = receiver2.recv();
@@ -94,26 +131,41 @@ fn agent() {
             let client = client.unwrap();
             let mes = message.unwrap();
 
-            let socket = UdpSocket::bind(thread2_addr).unwrap();
-
             socket.send_to(mes.as_bytes(), server2_addr).unwrap();
 
-            // listen for response
+
             let mut buf = [0; 1024];
-            let (amt, src) = socket.recv_from(&mut buf).unwrap();
-            let response = std::str::from_utf8(&buf[..amt]).unwrap();
+            match socket.recv_from(&mut buf){
+                Ok((amt, _src))=>{
+                    let response = std::str::from_utf8(&buf[..amt]).unwrap();
 
-            println!(
-                "client {:?} received response from server {:?}",
-                client, src
-            );
+                    socket.send_to(response.as_bytes(), client).unwrap();
+                }
+                Err(_e) => {
 
-            // send response back to client
-            socket.send_to(response.as_bytes(), client).unwrap();
+                }
+            }
+
+            // // listen for response
+            // let (amt, _src) = socket.recv_from(&mut buf).unwrap();
+            // let response = std::str::from_utf8(&buf[..amt]).unwrap();
+
+            // // println!(
+            // //     "client {:?} received response from server {:?}",
+            // //     client, src
+            // // );
+            
+            // // send response back to client
+            // socket.send_to(response.as_bytes(), client).unwrap();
+            // println!("THREAD2");
         }
     }));
 
     handles.push(thread::spawn(move || {
+        let socket = UdpSocket::bind(thread3_addr).unwrap();
+
+        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+
         loop {
             let client = receiver3.recv();
             let message = receiver3.recv();
@@ -121,22 +173,33 @@ fn agent() {
             let client = client.unwrap();
             let mes = message.unwrap();
 
-            let socket = UdpSocket::bind(thread3_addr).unwrap();
-
             socket.send_to(mes.as_bytes(), server3_addr).unwrap();
 
-            // listen for response
             let mut buf = [0; 1024];
-            let (amt, src) = socket.recv_from(&mut buf).unwrap();
-            let response = std::str::from_utf8(&buf[..amt]).unwrap();
+            match socket.recv_from(&mut buf){
+                Ok((amt, _src))=>{
+                    let response = std::str::from_utf8(&buf[..amt]).unwrap();
 
-            println!(
-                "client {:?} received response from server {:?}",
-                client, src
-            );
+                    socket.send_to(response.as_bytes(), client).unwrap();
+                }
+                Err(_e) => {
 
-            // send response back to client
-            socket.send_to(response.as_bytes(), client).unwrap();
+                }
+            }
+
+            // // listen for response
+            // let mut buf = [0; 1024];
+            // let (amt, _src) = socket.recv_from(&mut buf).unwrap();
+            // let response = std::str::from_utf8(&buf[..amt]).unwrap();
+
+            // // println!(
+            // //     "client {:?} received response from server {:?}",
+            // //     client, src
+            // // );
+
+            // // send response back to client
+            // socket.send_to(response.as_bytes(), client).unwrap();
+            // println!("THREAD3");
         }
     }));
 
@@ -151,10 +214,18 @@ fn agent() {
     // clone sender 4
     let sender4_clone = sender4.clone();
     handles.push(thread::spawn(move || {
+        // println!("thread 3");
         // send message to parent throufh channel
 
         // bind on agentAdd2
         let socket2 = UdpSocket::bind(agent_address2).unwrap();
+
+        socket2.send_to(b"tst", server1_addr2).unwrap();
+        socket2.send_to(b"tst", server2_addr2).unwrap();
+        socket2.send_to(b"tst", server3_addr2).unwrap();
+
+        // println!("hi");
+
         loop {
             let mut buf = [0; 1024];
             let (amt, src) = socket2.recv_from(&mut buf).unwrap();
@@ -169,6 +240,11 @@ fn agent() {
     }));
 
     loop {
+        let mut buf = [0; 2048];
+
+        let (amt, src) = socket
+            .recv_from(&mut buf)
+            .expect("Could not read data from socket");
         // check if receiver is empty
         if receiver4.try_recv().is_ok() {
             println!("receiver4 is not empty");
@@ -193,76 +269,80 @@ fn agent() {
             }
         }
 
-        println!("a_up: {:?}\n", a_up);
+        // println!("a_up: {:?}\n", a_up);
 
         let send1 = sender1.clone();
         let send2 = sender2.clone();
         let send3 = sender3.clone();
 
-        let mut buf = [0; 2048];
-
-        let (amt, src) = socket
-            .recv_from(&mut buf)
-            .expect("Could not read data from socket");
         // copy the data into a new buffer
         let message = String::from_utf8_lossy(&buf[..amt]);
 
         let message = message.to_string();
 
+        // println!("flags: {:?} {:?} {:?}", a_up, b_up, c_up);
+
         if a_up == true && b_up == true && c_up == true {
+            // println!("all up");
             if counter % 3 == 1 {
+                println!("sending to thread 1");
                 send1.send(src.to_string()).unwrap();
                 send1.send(message).unwrap();
+                // println!("sent to thread 1");
             } else if counter % 3 == 2 {
+                println!("sending to thread 2");
                 send2.send(src.to_string()).unwrap();
                 send2.send(message).unwrap();
+                // println!("sent to thread 2");
             } else if counter % 3 == 0 {
+                println!("sending to thread 3");
                 send3.send(src.to_string()).unwrap();
                 send3.send(message).unwrap();
+                // println!("sent to thread 3");
             }
         } else if a_up == true && b_up == true && c_up == false {
+            // println!("c is down");
             if counter % 2 == 1 {
+                println!("sending to thread 1");
+
                 send1.send(src.to_string()).unwrap();
                 send1.send(message).unwrap();
             } else if counter % 2 == 0 {
+                println!("sending to thread 2");
+
                 send2.send(src.to_string()).unwrap();
                 send2.send(message).unwrap();
             }
         } else if a_up == true && b_up == false && c_up == true {
+            // println!("b is down");
             if counter % 2 == 1 {
+                println!("sending to thread 1");
+                
                 send1.send(src.to_string()).unwrap();
                 send1.send(message).unwrap();
             } else if counter % 2 == 0 {
+                println!("sending to thread 3");
+
                 send3.send(src.to_string()).unwrap();
                 send3.send(message).unwrap();
             }
         } else if a_up == false && b_up == true && c_up == true {
+            // println!("a is down");
+            
             if counter % 2 == 1 {
+                println!("sending to thread 2");
                 send2.send(src.to_string()).unwrap();
                 send2.send(message).unwrap();
             } else if counter % 2 == 0 {
+                println!("sending to thread 3");
+                
                 send3.send(src.to_string()).unwrap();
                 send3.send(message).unwrap();
             }
         }
 
-        // if thread_a_flag == false && a_up == true {
-        //     send1.send(src.to_string()).unwrap();
-        //     send1.send(message.to_string()).unwrap();
-        //     thread_a_flag = true;
-        // }
-        // else if thread_b_flag == false && b_up == true {
-        //     send2.send(src.to_string()).unwrap();
-        //     send2.send(message.to_string()).unwrap();
-        //     thread_b_flag = true;
-        // }
-        // else if thread_c_flag == false && c_up == true {
-        //     send3.send(src.to_string()).unwrap();
-        //     send3.send(message.to_string()).unwrap();
-        //     thread_c_flag = true;
-        // }
         counter += 1;
 
-        println!("counter: {}", counter);
+        // println!("counter: {}", counter);
     }
 }
