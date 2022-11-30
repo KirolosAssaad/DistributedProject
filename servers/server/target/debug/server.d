@@ -1,1 +1,1 @@
-/home/kiro/distributed/DistributedProject/servers/server/target/debug/server: /home/kiro/distributed/DistributedProject/servers/server/src/main.rs
+/Users/osx/Downloads/dist/DistributedProject/servers/server/target/debug/server: /Users/osx/Downloads/dist/DistributedProject/servers/server/src/main.rs
