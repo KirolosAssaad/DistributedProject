@@ -1,7 +1,10 @@
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::net::UdpSocket;
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
 // use std::time::Duration;
+// let address = "10.7.57.77:";
 
 fn main() {
     let mut new_handles = vec![];
@@ -12,8 +15,16 @@ fn main() {
 
     let mut counter = 4000;
     let address = "10.7.57.77:";
-    for _ in 0..5 {
+    for _ in 0..500 {
         new_handles.push(thread::spawn(move || {
+            let mut succ_mes: i64 = 0;
+            let mut fail_mes: i64 = 0;
+            let mut tot_time: f64 = 0.0;
+            // create filename using counter and a string
+            let avg_filename = format!("./avg/avgResponse_{}", counter);
+            let failed_filename = format!("./failed/failed_{}", counter);
+            let success_filename = format!("./success/success_{}", counter);
+
             let new_address = address.to_string() + &counter.to_string();
             // println!("{}", new_address);
             loop {
@@ -21,6 +32,8 @@ fn main() {
                 let socket =
                     UdpSocket::bind(new_address.clone()).expect("couldn't bind to address");
                 let data = "hello world";
+                // start the timer
+                let start = std::time::Instant::now();
                 socket
                     .send_to(data.as_bytes(), "10.7.57.77:8080")
                     .expect("couldn't send data");
@@ -28,14 +41,86 @@ fn main() {
                 // receive data
                 let mut buf = [0; 1024];
 
-                socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+                socket
+                    .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+                    .expect("error setting timeout");
                 // // let (_amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive data");
                 match socket.recv_from(&mut buf) {
                     Ok((_amt, _src)) => {
+                        // stop the timer
+                        let duration = start.elapsed();
+
+                        succ_mes += 1;
+
+                        // calculate the time elapsed
+                        let time_elapsed =
+                            duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
+
+                        tot_time += time_elapsed as f64;
+
+                        // print the average time
+                        println!("Average time: {}", tot_time as f64 / succ_mes as f64);
+
+                        if succ_mes % 1000 == 0 {
+                            // store average time in a file
+                            let mut file = OpenOptions::new()
+                                .write(true)
+                                .append(false)
+                                .create(true)
+                                .open(avg_filename.clone())
+                                .unwrap();
+
+                            if let Err(e) = writeln!(file, "{}", tot_time as f64 / succ_mes as f64)
+                            {
+                                // write to file
+                                eprintln!("Couldn't write to file: {}", e);
+                            }
+
+                            // store successful messages in a file
+                            let mut file = OpenOptions::new()
+                                .write(true)
+                                .append(false)
+                                .create(true)
+                                .open(success_filename.clone())
+                                .unwrap();
+
+                            if let Err(e) = writeln!(file, "{}", succ_mes) {
+                                // write to file
+                                eprintln!("Couldn't write to file: {}", e);
+                            }
+
+                            // println!("Successful messages: {}", succ_mes);
+                        }
+
+                        // print the time elapsed
+                        println!(
+                            "Time elapsed in expensive_function() is: {} secs",
+                            time_elapsed
+                        );
+
                         // let message = std::str::from_utf8(&buf[..amt]).unwrap();
                         // println!("received message from {:?}: {:?}", src, message);
                     }
                     Err(_e) => {
+                        fail_mes += 1;
+
+                        // println!("Failed messages: {}", fail_mes);
+
+                        if fail_mes % 10 == 0 {
+                            // store failed messages in a file
+                            let mut file = OpenOptions::new()
+                                .write(true)
+                                .append(false)
+                                .create(true)
+                                .open(failed_filename.clone())
+                                .unwrap();
+
+                            if let Err(e) = writeln!(file, "{}", fail_mes) {
+                                // write to file
+                                eprintln!("Couldn't write to file: {}", e);
+                            }
+                        }
+
                         // println!("error receiving data: {:?}", e);
                         continue;
                     }
@@ -78,10 +163,13 @@ fn agent() {
     let (sender4, receiver4): (_, Receiver<String>) = channel();
 
     handles.push(thread::spawn(move || {
-        
+        let mut request_counter: i64 = 0;
+
         let socket = UdpSocket::bind(thread1_addr).unwrap();
 
-        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+        socket
+            .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .expect("error setting timeout");
 
         loop {
             let client = receiver1.recv();
@@ -90,22 +178,36 @@ fn agent() {
             let client = client.unwrap();
             let mes = message.unwrap();
 
-
             socket.send_to(mes.as_bytes(), server1_addr).unwrap();
 
             // listen for response
             let mut buf = [0; 1024];
             // let (amt, _src) = socket.recv_from(&mut buf).unwrap();
 
-            match socket.recv_from(&mut buf){
-                Ok((amt, _src))=>{
+            match socket.recv_from(&mut buf) {
+                Ok((amt, _src)) => {
                     let response = std::str::from_utf8(&buf[..amt]).unwrap();
-
+                    // println!("response: {:?}", response);
                     socket.send_to(response.as_bytes(), client).unwrap();
-                }
-                Err(_e) => {
 
+                    request_counter += 1;
+
+                    // write to file every 1000 requests
+                    if request_counter % 10 == 0 {
+                        let mut file = OpenOptions::new()
+                            .write(true)
+                            .append(false)
+                            .create(true)
+                            .open("server1.txt")
+                            .unwrap();
+                        file.write_all(format!("{}", request_counter).as_bytes())
+                            .unwrap();
+                        // if let Err(e) = writeln!(file, "{}", request_counter) {
+                        //     eprintln!("Couldn't write to file: {}", e);
+                        // }
+                    }
                 }
+                Err(_e) => {}
             }
 
             // println!(
@@ -118,11 +220,15 @@ fn agent() {
             // println!("THREAD1");
         }
     }));
-    
+
     handles.push(thread::spawn(move || {
+        let mut request_counter: i64 = 0;
+
         let socket = UdpSocket::bind(thread2_addr).unwrap();
 
-        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+        socket
+            .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .expect("error setting timeout");
 
         loop {
             let client = receiver2.recv();
@@ -133,17 +239,31 @@ fn agent() {
 
             socket.send_to(mes.as_bytes(), server2_addr).unwrap();
 
-
             let mut buf = [0; 1024];
-            match socket.recv_from(&mut buf){
-                Ok((amt, _src))=>{
+            match socket.recv_from(&mut buf) {
+                Ok((amt, _src)) => {
                     let response = std::str::from_utf8(&buf[..amt]).unwrap();
 
                     socket.send_to(response.as_bytes(), client).unwrap();
-                }
-                Err(_e) => {
 
+                    request_counter += 1;
+
+                    // write to file every 1000 requests
+                    if request_counter % 10 == 0 {
+                        let mut file = OpenOptions::new()
+                            .write(true)
+                            .append(false)
+                            .create(true)
+                            .open("server2.txt")
+                            .unwrap();
+                        file.write_all(format!("{}", request_counter).as_bytes())
+                            .unwrap();
+                        // if let Err(e) = writeln!(file, "{}", request_counter) {
+                        //     eprintln!("Couldn't write to file: {}", e);
+                        // }
+                    }
                 }
+                Err(_e) => {}
             }
 
             // // listen for response
@@ -154,7 +274,7 @@ fn agent() {
             // //     "client {:?} received response from server {:?}",
             // //     client, src
             // // );
-            
+
             // // send response back to client
             // socket.send_to(response.as_bytes(), client).unwrap();
             // println!("THREAD2");
@@ -162,9 +282,12 @@ fn agent() {
     }));
 
     handles.push(thread::spawn(move || {
+        let mut request_counter: i64 = 0;
         let socket = UdpSocket::bind(thread3_addr).unwrap();
 
-        socket.set_read_timeout(Some(std::time::Duration::from_millis(500))).expect("error setting timeout");
+        socket
+            .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .expect("error setting timeout");
 
         loop {
             let client = receiver3.recv();
@@ -176,15 +299,30 @@ fn agent() {
             socket.send_to(mes.as_bytes(), server3_addr).unwrap();
 
             let mut buf = [0; 1024];
-            match socket.recv_from(&mut buf){
-                Ok((amt, _src))=>{
+            match socket.recv_from(&mut buf) {
+                Ok((amt, _src)) => {
                     let response = std::str::from_utf8(&buf[..amt]).unwrap();
 
                     socket.send_to(response.as_bytes(), client).unwrap();
-                }
-                Err(_e) => {
 
+                    request_counter += 1;
+
+                    // write to file every 1000 requests
+                    if request_counter % 10 == 0 {
+                        let mut file = OpenOptions::new()
+                            .write(true)
+                            .append(false)
+                            .create(true)
+                            .open("server3.txt")
+                            .unwrap();
+                        file.write_all(format!("{}", request_counter).as_bytes())
+                            .unwrap();
+                        // if let Err(e) = writeln!(file, "{}", request_counter) {
+                        //     eprintln!("Couldn't write to file: {}", e);
+                        // }
+                    }
                 }
+                Err(_e) => {}
             }
 
             // // listen for response
@@ -317,7 +455,7 @@ fn agent() {
             // println!("b is down");
             if counter % 2 == 1 {
                 println!("sending to thread 1");
-                
+
                 send1.send(src.to_string()).unwrap();
                 send1.send(message).unwrap();
             } else if counter % 2 == 0 {
@@ -328,14 +466,14 @@ fn agent() {
             }
         } else if a_up == false && b_up == true && c_up == true {
             // println!("a is down");
-            
+
             if counter % 2 == 1 {
                 println!("sending to thread 2");
                 send2.send(src.to_string()).unwrap();
                 send2.send(message).unwrap();
             } else if counter % 2 == 0 {
                 println!("sending to thread 3");
-                
+
                 send3.send(src.to_string()).unwrap();
                 send3.send(message).unwrap();
             }
