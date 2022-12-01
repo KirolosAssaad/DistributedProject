@@ -17,7 +17,7 @@ The project is a distributed system that simulates 2 clients and 3 servers. The 
 ***
 ## Project Structure
 
-The project is divided into 3 main parts:
+The project is divided into the following sections:
 
 1. [The client part](client/client/src/main.rs)
 2. [The agent part](client/client/src/main.rs)
